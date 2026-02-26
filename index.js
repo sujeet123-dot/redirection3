@@ -5,7 +5,7 @@ const app = express();
 
 app.use(cookieParser());
 
-const TARGET_URL = "https://www.zenithummedia.com/case-studies?utm_source=google&utm_medium=medium&utm_campaign=NEW307&utm_id=Visit_frame";
+const TARGET_URL = "https://www.zenithummedia.com/case-studies?utm_source=google&utm_medium=medium&utm_campaign=LEMDA&utm_id=Visit_frame";
 const MEASUREMENT_ID = "G-SNCY0K36MC";
 
 /**
