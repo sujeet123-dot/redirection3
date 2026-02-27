@@ -1,9 +1,16 @@
 const express = require('express');
 const axios = require('axios');
 const cookieParser = require('cookie-parser');
+const https = require('https')
 const app = express();
 
 app.use(cookieParser());
+
+const httpAgent = new https.Agent({ keepAlive: true, maxSockets: 100 });
+const gaClient = axios.create({
+    httpsAgent: httpAgent,
+    timeout: 10000
+});
 
 const TARGET_URL = "https://www.zenithummedia.com/case-studies?utm_source=google&utm_medium=medium&utm_campaign=DEBUG&utm_id=Visit_frame";
 const MEASUREMENT_ID = "G-SNCY0K36MC";
@@ -37,7 +44,7 @@ async function sendGaPing(clientId, sessionId, userAgent, eventName, engagementT
     }
 
     try {
-        await axios.get(`https://www.google-analytics.com/g/collect?${params.toString()}`, {
+        await gaClient.get(`https://www.google-analytics.com/g/collect?${params.toString()}`, {
             headers: { 'User-Agent': userAgent }
         });
         console.log(`[GA4] Event sent: ${eventName} (${engagementTime/1000}s)`);
