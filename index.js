@@ -32,7 +32,7 @@ async function finalizeSessionDuration(clientId, sessionId, userAgent) {
     });
 
     try {
-        await axios.post(`https://www.google-analytics.com/mp/collect?${payload.toString()}`, payload, {
+        await axios.post(`https://www.google-analytics.com/g/collect?${payload.toString()}`, payload, {
             headers: { 'User-Agent': userAgent }
         });
         console.log(`Success: Session duration recorded as ${randomDuration / 1000}s`);
