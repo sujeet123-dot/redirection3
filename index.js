@@ -5,37 +5,39 @@ const app = express();
 
 app.use(cookieParser());
 
-const TARGET_URL = "https://www.zenithummedia.com/case-studies?utm_source=google&utm_medium=medium&utm_campaign=NEW308&utm_id=Visit_frame";
+const TARGET_URL = "https://www.zenithummedia.com/case-studies?utm_source=google&utm_medium=medium&utm_campaign=DEBUG&utm_id=Visit_frame";
 const MEASUREMENT_ID = "G-SNCY0K36MC";
 
 /**
- * Sends a single ping after a 90-second delay to 
- * "lock in" the session duration.
+ * Background task to "lock in" session duration
  */
-async function finalizeSession(clientId, sessionId, userAgent) {
-    const waitTime = 90000; // 90 Seconds
+async function finalizeSessionDuration(clientId, sessionId, userAgent) {
+    // Generate a random duration between 90,000ms and 100,000ms
+    const randomDuration = Math.floor(Math.random() * (100000 - 90000 + 1) + 90000);
+    
+    console.log(`Holding session for: ${randomDuration / 1000} seconds...`);
 
-    // Wait silently in the background
-    await new Promise(resolve => setTimeout(resolve, waitTime));
+    // Wait for the random duration
+    await new Promise(resolve => setTimeout(resolve, randomDuration));
 
     const payload = new URLSearchParams({
         v: '2',
         tid: MEASUREMENT_ID,
         cid: clientId,
         sid: sessionId,
-        en: 'session_end_ping', // A single custom event to mark the end time
-        _et: waitTime.toString(), // Tells GA user was active for the 90s
+        en: 'session_duration_finalized', 
+        _et: randomDuration.toString(), // The secret to forcing the duration
         seg: '1',
-        debug_mode: '1'
+        debug_mode: '1'                 // Allows for easy verification
     });
 
     try {
         await axios.post(`https://www.google-analytics.com/g/collect?${payload.toString()}`, {}, {
             headers: { 'User-Agent': userAgent }
         });
-        console.log("Session duration finalized at 90s.");
+        console.log(`Success: Session duration recorded as ${randomDuration / 1000}s`);
     } catch (err) {
-        // Silent error handling
+        console.error("Final ping failed:", err.message);
     }
 }
 
@@ -43,13 +45,14 @@ app.all('/', (req, res) => {
     const gaCookie = req.cookies['_ga'] || '';
     const sessionCookie = req.cookies[`_ga_${MEASUREMENT_ID.slice(2)}`] || '';
 
+    // Extract or generate IDs
     const clientId = gaCookie ? 
        gaCookie.split('.').slice(-2).join('.') : `100.${Date.now()}`;
-    const sessionId = sessionCookie ? sessionCookie.split('.')[2] : Date.now().toString();
+    const sessionId = sessionCookie ? sessionCookie.split('.')[2] :  Date.now().toString();
     const userAgent = req.headers['user-agent'] || 'Mozilla/5.0';
 
-    // Start the timer - this won't send anything for 90 seconds
-    finalizeSession(clientId, sessionId, userAgent);
+    // Start background timer
+    finalizeSessionDuration(clientId, sessionId, userAgent);
 
     // Instant Redirect
     res.set({
@@ -60,5 +63,4 @@ app.all('/', (req, res) => {
     res.status(307).send();
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Traffic manager active on port ${PORT}`));
+app.listen(3000, () => console.log('Verifier active on port 3000'));
