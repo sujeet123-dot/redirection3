@@ -17,22 +17,38 @@ const gaClient = axios.create({
 const TARGET_URL = "https://www.zenithummedia.com/case-studies?utm_source=google&utm_medium=medium&utm_campaign=DEBUG3&utm_id=Visit_frame";
 const MEASUREMENT_ID = "G-SNCY0K36MC";
 
-function getGaIdentifiers(req) {
-    const gaCookie = req.cookies['_ga'] || '';
-    const clientId = gaCookie.split('.').slice(-2).join('.') || `100.${Date.now()}`;
-    
-    const sidKey = `_ga_${MEASUREMENT_ID.slice(2)}`;
-    const sessionCookie = req.cookies?.[sidKey] || '';
-    const sessionId = sessionCookie.split('.')[2] || Math.round(Date.now() / 1000).toString();
-    
-    // Get real user IP from Render's headers
-    const userIp = (req.headers['x-forwarded-for'] || req.ip ||  '').split(',')[0].trim().replace('::ffff:', ''); 
-    const userAgent = req.headers['user-agent'] || 'Mozilla/5.0';
+async function runServerSideTracking(ids) {
+    //const initialBuffer = 5000;
 
-    return { clientId, sessionId, userIp, userAgent };
+    console.log(`pv started ...`)
+    await sendPing(ids, 'page_view1', { 
+        '_et': 0
+    })
+    console.log("pv ended ...")
+
+    const scrollDelay1 = Math.floor(Math.random() * (25000 - 20000 + 1) + 20000);
+
+    await new Promise(resolve => setTimeout(resolve, scrollDelay1));
+    console.log(`Scroll started in ${scrollDelay1} sec`)
+    await sendPing(ids, 'scroll', { 
+        'epn.percent_scrolled': 90,
+        '_et': scrollDelay1.toString()
+    })
+    console.log(`Scroll endeded ...`)
+
+    const scrollDelay2 = Math.floor(Math.random() * (100000 - 90000 + 1) + 90000);
+
+    await new Promise(resolve => setTimeout(resolve, scrollDelay2));
+    console.log(`Final session started in ${scrollDelay2} sec`)
+    await sendPing(ids, 'final_session', { 
+        '_et': scrollDelay2.toString()
+    })
+    console.log(`Final session ended`)
+
 }
 
-async function sendGaPing(ids, eventName, extraParam={}) {     
+
+async function sendPing(ids, eventName, extraParam={}) {     
       
 
       const params = new URLSearchParams({
@@ -68,42 +84,26 @@ async function sendGaPing(ids, eventName, extraParam={}) {
 }
 
 app.all('/', (req, res) => {
-    const ids = getGaIdentifiers(req);
+    
+    const gaCookie = req.cookies['_ga'] || '';
+    const clientId = gaCookie.split('.').slice(-2).join('.') || `100.${Date.now()}`;
+    
+    const sidKey = `_ga_${MEASUREMENT_ID.slice(2)}`;
+    const sessionCookie = req.cookies?.[sidKey] || '';
+    const sessionId = sessionCookie.split('.')[2] || Math.round(Date.now() / 1000).toString();
+    
+    // Get real user IP from Render's headers
+    const userIp = (req.headers['x-forwarded-for'] || req.ip ||  '').split(',')[0].trim().replace('::ffff:', ''); 
+    const userAgent = req.headers['user-agent'] || 'Mozilla/5.0';
 
-    // 1. Immediate Warm-up (Registers the user in India)
-    console.log("Page view started...")
-    sendGaPing(ids, 'page_view');
-    console.log("Page view ended...")
+    const ids = {
+        clientId: clientId,
+        sessionId: sessionId,
+        userIp,
+        userAgent
+    };
 
-    const scrollDelay = Math.floor(Math.random() * (45000 - 30000 + 1) + 30000);
-    setTimeout(() => {
-        console.log("scroll started...")
-        sendGaPing(ids, 'scroll', {
-          // 'ep.page_location': TARGET_URL,
-          'epn.percent_scrolled': 90,
-          '_et': scrollDelay.toString() // This locks in the 30-45s engagement
-        });
-        console.log(`Scroll ended in ${scrollDelay} sec`)
-    }, scrollDelay);
-
-    const engaged = Math.floor(Math.round() * (20000 - 15000 + 1) + 15000);
-
-    setTimeout(() => {
-        console.log("user engaged session started...")
-        sendGaPing(ids, "user_engaged", {
-            '_et': engaged.toString()
-        })
-        console.log(`user engaged session ended in ${engaged} sec`)
-    }, engaged)
-
-    // 2. Background Timer (90-100s)
-    const randomDuration = Math.floor(Math.random() * (100000 - 90000 + 1) + 90000);
-    setTimeout(() => {
-        console.log("session duration started...")
-        sendGaPing(ids, 'session_duration_finalizedzm');
-        console.log(`Session duration ended in ${randomDuration}`)
-    }, randomDuration);
-
+    runServerSideTracking(ids);
 
     // 3. Instant 307 Redirect
     res.set({
