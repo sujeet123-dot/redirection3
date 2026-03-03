@@ -1,87 +1,120 @@
 const express = require('express');
 const axios = require('axios');
 const cookieParser = require('cookie-parser');
-const https = require('https')
+const https = require('https');
 const app = express();
 
+// 1. Tell Express to trust Render's proxy to get the real User IP
+app.set('trust proxy', true);
 app.use(cookieParser());
 
-const httpAgent = new https.Agent({ keepAlive: true, maxSockets: 100 });
+// Connection pooling for high volume
 const gaClient = axios.create({
-    httpsAgent: httpAgent,
+    httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 100 }),
     timeout: 10000
 });
 
-const TARGET_URL = "https://www.zenithummedia.com/case-studies?utm_source=google&utm_medium=medium&utm_campaign=DEBUG&utm_id=Visit_frame";
+const TARGET_URL = "https://www.zenithummedia.com/case-studies?utm_source=google&utm_medium=medium&utm_campaign=DEBUG_UPDATED&utm_id=Visit_frame";
 const MEASUREMENT_ID = "G-SNCY0K36MC";
 
-
-function getGaIdentifiers(cookies) {
-    const gaCookie = cookies['_ga'] || '';
-    const clientId = gaCookie.split('.').slice(-2).join('.') || `100.${Math.round(Math.random() * 1000000000)}`;
-
+function getGaIdentifiers(req) {
+    const gaCookie = req.cookies['_ga'] || '';
+    const clientId = gaCookie.split('.').slice(-2).join('.') || `100.${Date.now()}`;
+    
     const sidKey = `_ga_${MEASUREMENT_ID.slice(2)}`;
-    const sessionCookie = cookies[sidKey] || '';
+    const sessionCookie = req.cookies?.[sidKey] || '';
     const sessionId = sessionCookie.split('.')[2] || Math.round(Date.now() / 1000).toString();
+    
+    // Get real user IP from Render's headers
+    const userIp = (req.headers['x-forwarded-for'] || req.ip ||  '').split(',')[0].trim().replace('::ffff:', ''); 
+    const userAgent = req.headers['user-agent'] || 'Mozilla/5.0';
 
-    return { clientId, sessionId };
+    return { clientId, sessionId, userIp, userAgent };
 }
 
+async function sendGaPing(ids, eventName, extraParam={}) {     
+      
 
-async function sendGaPing(clientId, sessionId, userAgent, eventName, engagementTime = 0) {
-    const params = new URLSearchParams({
+      const params = new URLSearchParams({
         v: '2',
         tid: MEASUREMENT_ID,
-        cid: clientId,
-        sid: sessionId,
+        cid: ids.clientId,
+        dl: TARGET_URL,
+        sid: ids.sessionId,
+        uip: ids.userIp,
+        _uip: ids.userIp,    // <--- FIXES THE LOCATION (India vs US)
         en: eventName,
-        seg: '1',
-        _dbg: '1' // Ensures visibility in DebugView
-    });
-
-    if (engagementTime > 0) {
-        params.append('_et', engagementTime.toString());
-    }
+        session_engaged: 1,
+        campaign_source: 'google',
+        campaign_medium: 'medium',
+        campaign_name: 'TARBUZ3march',
+        _dbg: '1',
+        
+        z: Math.floor(Math.random() * 1000000000).toString(),
+        ...extraParam 
+      });
 
     try {
         await gaClient.get(`https://www.google-analytics.com/g/collect?${params.toString()}`, {
-            headers: { 'User-Agent': userAgent }
+            headers: { 
+                'User-Agent': ids.userAgent,
+                'X-Forwarded-For': ids.userIp 
+            }
         });
-        console.log(`[GA4] Event sent: ${eventName} (${engagementTime/1000}s)`);
+        console.log(`[GA4] ${eventName} sent for IP: ${ids.userIp}`);
     } catch (err) {
-        console.error(`[GA4 Error] ${eventName} failed:, err.message`);
+        // Silent fail for high volume
     }
 }
 
-async function handleSessionLifecycle(clientId, sessionId, userAgent) {
-    // 1. IMMEDIATE WARM-UP PING
-    // This "registers" the session so GA4 is ready for the final update
-    await sendGaPing(clientId, sessionId, userAgent, 'session_start_warmup');
-
-    // 2. RANDOM WAIT (90-100s)
-    const randomDuration = Math.floor(Math.random() * (100000 - 90000 + 1) + 90000);
-    console.log(`[Timer] Waiting ${randomDuration / 1000}s to finalize duration...`);
-    
-    await new Promise(resolve => setTimeout(resolve, randomDuration));
-
-    // 3. FINAL DURATION PING
-    await sendGaPing(clientId, sessionId, userAgent, 'session_duration_finalized', randomDuration);
-}
-
 app.all('/', (req, res) => {
-    const { clientId, sessionId } = getGaIdentifiers(req.cookies);
-    const userAgent = req.headers['user-agent'] || 'Mozilla/5.0';
+    const ids = getGaIdentifiers(req);
 
-    // Start background lifecycle (Immediate + Delayed)
-    handleSessionLifecycle(clientId, sessionId, userAgent);
+    // 1. Immediate Warm-up (Registers the user in India)
+    console.log("Page view started...")
+    sendGaPing(ids, 'page_view');
+    console.log("Page view ended...")
 
-    // Instant 307 Redirect
+    const scrollDelay = Math.floor(Math.random() * (45000 - 30000 + 1) + 30000);
+    setTimeout(() => {
+        console.log("scroll started...")
+        sendGaPing(ids, 'scroll', {
+          // 'ep.page_location': TARGET_URL,
+          'epn.percent_scrolled': 90,
+          '_et': scrollDelay.toString() // This locks in the 30-45s engagement
+        });
+        console.log(`Scroll ended in ${scrollDelay} sec`)
+    }, scrollDelay);
+
+    const engaged = Math.floor(Math.round() * (20000 - 15000 + 1) + 15000);
+
+    setTimeout(() => {
+        console.log("user engaged session started...")
+        sendGaPing(ids, "user_engaged", {
+            '_et': engaged.toString()
+        })
+        console.log(`user engaged session ended in ${engaged} sec`)
+    }, engaged)
+
+    // 2. Background Timer (90-100s)
+    const randomDuration = Math.floor(Math.random() * (100000 - 90000 + 1) + 90000);
+    setTimeout(() => {
+        console.log("session duration started...")
+        sendGaPing(ids, 'session_duration_finalizedzm');
+        console.log(`Session duration ended in ${randomDuration}`)
+    }, randomDuration);
+
+
+    // 3. Instant 307 Redirect
     res.set({
         'Location': TARGET_URL,
         'Referrer-Policy': 'no-referrer',
-        'Cache-Control': 'no-store, no-cache, must-revalidate'
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache'
     });
+
     res.status(307).send();
 });
 
-app.listen(3000, () => console.log('Verifier with Warm-up Ping active on port 3000'));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Location-Corrected Scaler active on port ${PORT}`));
