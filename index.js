@@ -21,7 +21,7 @@ async function runServerSideTracking(ids) {
     //const initialBuffer = 5000;
 
     console.log(`pv started ...`)
-    await sendPing(ids, 'page_view1', { 
+    await sendPing(ids, 'page_view', { 
         '_et': 0
     })
     console.log("pv ended ...")
